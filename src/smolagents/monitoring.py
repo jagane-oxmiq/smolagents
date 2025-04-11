@@ -14,6 +14,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import os
 import json
 from enum import IntEnum
 from typing import List, Optional
@@ -26,6 +27,7 @@ from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
 from rich.tree import Tree
+from datetime import datetime
 
 from smolagents.utils import escape_code_brackets
 
@@ -34,10 +36,11 @@ __all__ = ["AgentLogger", "LogLevel", "Monitor"]
 
 
 class Monitor:
-    def __init__(self, tracked_model, logger):
+    def __init__(self, tracked_model, logger, logs_dir):
         self.step_durations = []
         self.tracked_model = tracked_model
         self.logger = logger
+        self._logs_dir = logs_dir
         if getattr(self.tracked_model, "last_input_token_count", "Not found") != "Not found":
             self.total_input_token_count = 0
             self.total_output_token_count = 0
@@ -53,7 +56,7 @@ class Monitor:
         self.total_input_token_count = 0
         self.total_output_token_count = 0
 
-    def update_metrics(self, step_log):
+    def update_metrics(self, step_log, agent):
         """Update the metrics of the monitor.
 
         Args:
@@ -61,7 +64,7 @@ class Monitor:
         """
         step_duration = step_log.duration
         self.step_durations.append(step_duration)
-        console_outputs = f"[Step {len(self.step_durations)}: Duration {step_duration:.2f} seconds"
+        console_outputs = f"[Step {len(self.step_durations)} @ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}: Duration {step_duration:.2f} seconds"
 
         if getattr(self.tracked_model, "last_input_token_count", None) is not None:
             self.total_input_token_count += self.tracked_model.last_input_token_count
@@ -71,7 +74,12 @@ class Monitor:
             )
         console_outputs += "]"
         self.logger.log(Text(console_outputs, style="dim"), level=1)
-
+        if agent._parent_step_number == 0:
+            pth = os.path.join(agent._logs_dir, f"summary.md")
+        else:
+            pth = os.path.join(agent._logs_dir, f"{agent._parent_step_number}", f"summary.md")
+        with open(pth, 'a') as wfp:
+            wfp.write(f"{console_outputs}\nAgent task={agent.task}\n------------------------------------\n")
 
 class LogLevel(IntEnum):
     OFF = -1  # No output
@@ -154,7 +162,7 @@ class AgentLogger:
         self.log(
             Panel(
                 f"\n[bold]{escape_code_brackets(content)}\n",
-                title="[bold]New run" + (f" - {title}" if title else ""),
+                title="[bold]New run" + (f" - {title}" if title else "") + (f' @ {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}'),
                 subtitle=subtitle,
                 border_style=YELLOW_HEX,
                 subtitle_align="left",

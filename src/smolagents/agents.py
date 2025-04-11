@@ -22,6 +22,8 @@ import re
 import tempfile
 import textwrap
 import time
+import openai
+from datetime import datetime
 from collections import deque
 from logging import getLogger
 from pathlib import Path
@@ -64,7 +66,6 @@ from .utils import (
     parse_json_tool_call,
     truncate_content,
 )
-
 
 logger = getLogger(__name__)
 
@@ -201,6 +202,7 @@ class MultiStepAgent:
         description: Optional[str] = None,
         provide_run_summary: bool = False,
         final_answer_checks: Optional[List[Callable]] = None,
+        logs_dir: str = None,
     ):
         self.agent_name = self.__class__.__name__
         self.model = model
@@ -215,6 +217,7 @@ class MultiStepAgent:
         self.description = description
         self.provide_run_summary = provide_run_summary
         self.final_answer_checks = final_answer_checks
+        self._logs_dir = logs_dir
 
         self._setup_managed_agents(managed_agents)
         self._setup_tools(tools, add_base_tools)
@@ -225,7 +228,7 @@ class MultiStepAgent:
         self.task = None
         self.memory = AgentMemory(self.system_prompt)
         self.logger = AgentLogger(level=verbosity_level)
-        self.monitor = Monitor(self.model, self.logger)
+        self.monitor = Monitor(self.model, self.logger, self._logs_dir)
         self.step_callbacks = step_callbacks if step_callbacks is not None else []
         self.step_callbacks.append(self.monitor.update_metrics)
 
@@ -289,6 +292,11 @@ class MultiStepAgent:
         agent.run("What is the result of 2 power 3.7384?")
         ```
         """
+        if 'PARENT_STEP_NUMBER' in os.environ:
+            self._parent_step_number = int(os.environ['PARENT_STEP_NUMBER'])
+            os.makedirs(os.path.join(self._logs_dir, f"{self._parent_step_number}"), exist_ok=True)
+        else:
+            self._parent_step_number = 0
         max_steps = max_steps or self.max_steps
         self.task = task
         if additional_args is not None:
@@ -349,7 +357,14 @@ You have been provided with these additional arguments, that you can access usin
     def _execute_step(self, task: str, memory_step: ActionStep) -> Union[None, Any]:
         if self.planning_interval is not None and self.step_number % self.planning_interval == 1:
             self.planning_step(task, is_first_step=(self.step_number == 1), step=self.step_number)
-        self.logger.log_rule(f"Step {self.step_number}", level=LogLevel.INFO)
+        ll = f"# Step {self.step_number} @ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        self.logger.log_rule(ll, level=LogLevel.INFO)
+        if self._parent_step_number == 0:
+            pth = os.path.join(self._logs_dir, f"summary.md")
+        else:
+            pth = os.path.join(self._logs_dir, f"{self._parent_step_number}", f"summary.md")
+        with open(pth, 'a') as wfp:
+            wfp.write(ll + '\n')
         final_answer = self.step(memory_step)
         if final_answer is not None and self.final_answer_checks:
             self._validate_final_answer(final_answer)
@@ -374,9 +389,14 @@ You have been provided with these additional arguments, that you can access usin
 
     def _handle_max_steps_reached(self, task: str, images: List[str], step_start_time: float) -> Any:
         final_answer = self.provide_final_answer(task, images)
-        final_memory_step = ActionStep(
-            step_number=self.step_number, error=AgentMaxStepsError("Reached max steps.", self.logger)
-        )
+        ll = f"Reached max steps. @ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        final_memory_step = ActionStep(step_number=self.step_number, error=AgentMaxStepsError(ll, self.logger))
+        if self._parent_step_number == 0:
+            pth = os.path.join(self._logs_dir, f"summary.md")
+        else:
+            pth = os.path.join(self._logs_dir, f"{self._parent_step_number}", f"summary.md")
+        with open(pth, 'a') as wfp:
+            wfp.write(ll + '\n')
         final_memory_step.action_output = final_answer
         final_memory_step.end_time = time.time()
         final_memory_step.duration = final_memory_step.end_time - step_start_time
@@ -407,7 +427,7 @@ You have been provided with these additional arguments, that you can access usin
                 ],
             },
         ]
-        facts_message = self.model(input_messages)
+        facts_message = self.model(input_messages, self._logs_dir, self.step_number, self._parent_step_number)
 
         message_prompt_plan = {
             "role": MessageRole.USER,
@@ -426,7 +446,7 @@ You have been provided with these additional arguments, that you can access usin
                 }
             ],
         }
-        plan_message = self.model([message_prompt_plan], stop_sequences=["<end_plan>"])
+        plan_message = self.model([message_prompt_plan], self._logs_dir, self.step_number, self._parent_step_number, stop_sequences=["<end_plan>"])
         return input_messages, facts_message, plan_message
 
     def _generate_updated_plan(self, task: str, step: int) -> Tuple[ChatMessage, ChatMessage]:
@@ -442,7 +462,8 @@ You have been provided with these additional arguments, that you can access usin
             "content": [{"type": "text", "text": self.prompt_templates["planning"]["update_facts_post_messages"]}],
         }
         input_messages = [facts_update_pre] + memory_messages + [facts_update_post]
-        facts_message = self.model(input_messages)
+        ldir = os.path.join(self._logs_dir, f"{self._parent_step_number}")
+        facts_message = self.model(input_messages, self._logs_dir, self.step_number, self._parent_step_number)
 
         update_plan_pre = {
             "role": MessageRole.SYSTEM,
@@ -474,7 +495,9 @@ You have been provided with these additional arguments, that you can access usin
             ],
         }
         plan_message = self.model(
-            [update_plan_pre] + memory_messages + [update_plan_post], stop_sequences=["<end_plan>"]
+            [update_plan_pre] + memory_messages + [update_plan_post],
+            self._logs_dir, self.step_number, self._parent_step_number,
+            stop_sequences=["<end_plan>"]
         )
         return input_messages, facts_message, plan_message
 
@@ -504,7 +527,14 @@ You have been provided with these additional arguments, that you can access usin
                 model_output_message_facts=facts_message,
             )
         )
-        self.logger.log(Rule(f"[bold]{log_message}", style="orange"), Text(plan), level=LogLevel.INFO)
+        ll = f"[bold]{log_message} @ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        self.logger.log(Rule(ll, style="orange"), Text(plan), level=LogLevel.INFO)
+        if self._parent_step_number == 0:
+            pth = os.path.join(self._logs_dir, f"summary.md")
+        else:
+            pth = os.path.join(self._logs_dir, f"{self._parent_step_number}", f"summary.md")
+        with open(pth, 'a') as wfp:
+            wfp.write(ll + '\n')
 
     @property
     def logs(self):
@@ -594,8 +624,9 @@ You have been provided with these additional arguments, that you can access usin
                 ],
             }
         ]
+        ldir = os.path.join(self._logs_dir, f"{self._parent_step_number}")
         try:
-            chat_message: ChatMessage = self.model(messages)
+            chat_message: ChatMessage = self.model(messages, self._logs_dir, self.step_number, self._parent_step_number)
             return chat_message.content
         except Exception as e:
             return f"Error in generating final LLM output:\n{e}"
@@ -615,6 +646,7 @@ You have been provided with these additional arguments, that you can access usin
             raise AgentExecutionError(error_msg, self.logger)
 
         try:
+            print(f"XXXXXXXXXXXXXXXXXXX tool_name={tool_name}, arguments={arguments}")
             if isinstance(arguments, str):
                 if tool_name in self.managed_agents:
                     observation = available_tools[tool_name].__call__(arguments)
@@ -668,6 +700,7 @@ You have been provided with these additional arguments, that you can access usin
             self.prompt_templates["managed_agent"]["task"],
             variables=dict(name=self.name, task=task),
         )
+        print(f"YYYYYYYYYYYYYYYYYYY task={task}, kwargs={kwargs}")
         report = self.run(full_task, **kwargs)
         answer = populate_template(
             self.prompt_templates["managed_agent"]["report"], variables=dict(name=self.name, final_answer=report)
@@ -1046,9 +1079,11 @@ class ToolCallingAgent(MultiStepAgent):
         # Add new step in logs
         memory_step.model_input_messages = memory_messages.copy()
 
+        ldir = os.path.join(self._logs_dir, f"{self._parent_step_number}")
         try:
             model_message: ChatMessage = self.model(
                 memory_messages,
+                self._logs_dir, self.step_number, self._parent_step_number,
                 tools_to_call_from=list(self.tools.values()),
                 stop_sequences=["Observation:"],
             )
@@ -1059,6 +1094,19 @@ class ToolCallingAgent(MultiStepAgent):
             tool_name, tool_call_id = tool_call.function.name, tool_call.id
             tool_arguments = tool_call.function.arguments
 
+        except openai.BadRequestError as bre:
+            if bre.message.startswith('Error code: 400 - '):
+                BEGINSTR = "\\'msg\\': \\'"
+                ENDSTR = "\\'"
+                begin = bre.message.find(BEGINSTR)
+                if begin >= 0:
+                    msg = bre.message[begin + len(BEGINSTR):]
+                    end = msg.find(ENDSTR)
+                    if end >= 0:
+                        msg = msg[:end]
+                    print(f"ToolCallingAgent: Received a BadRequestError -- {msg}")
+                    raise AgentGenerationError(f"Error in generating tool call with model:\n{msg}", self.logger) from bre
+            raise AgentGenerationError(f"Error in generating tool call with model", self.logger) from bre
         except Exception as e:
             raise AgentGenerationError(f"Error in generating tool call with model:\n{e}", self.logger) from e
 
@@ -1082,13 +1130,13 @@ class ToolCallingAgent(MultiStepAgent):
             ):  # if the answer is a state variable, return the value
                 final_answer = self.state[answer]
                 self.logger.log(
-                    f"[bold {YELLOW_HEX}]Final answer:[/bold {YELLOW_HEX}] Extracting key '{answer}' from state to return value '{final_answer}'.",
+                    f"[bold {YELLOW_HEX}]Final answer:{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}[/bold {YELLOW_HEX}] Extracting key '{answer}' from state to return value '{final_answer}'.",
                     level=LogLevel.INFO,
                 )
             else:
                 final_answer = answer
                 self.logger.log(
-                    Text(f"Final answer: {final_answer}", style=f"bold {YELLOW_HEX}"),
+                    Text(f"Final answer:{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} {final_answer}", style=f"bold {YELLOW_HEX}"),
                     level=LogLevel.INFO,
                 )
 
@@ -1214,11 +1262,13 @@ class CodeAgent(MultiStepAgent):
         self.input_messages = memory_messages.copy()
 
         # Add new step in logs
+        ldir = os.path.join(self._logs_dir, f"{self._parent_step_number}")
         memory_step.model_input_messages = memory_messages.copy()
         try:
             additional_args = {"grammar": self.grammar} if self.grammar is not None else {}
             chat_message: ChatMessage = self.model(
                 self.input_messages,
+                self._logs_dir, self.step_number, self._parent_step_number,
                 stop_sequences=["<end_code>", "Observation:"],
                 **additional_args,
             )
@@ -1253,6 +1303,7 @@ class CodeAgent(MultiStepAgent):
         self.logger.log_code(title="Executing parsed code:", content=code_action, level=LogLevel.INFO)
         is_final_answer = False
         try:
+            os.environ['PARENT_STEP_NUMBER'] = str(self.step_number)
             output, execution_logs, is_final_answer = self.python_executor(code_action)
             execution_outputs_console = []
             if len(execution_logs) > 0:
@@ -1285,7 +1336,7 @@ class CodeAgent(MultiStepAgent):
 
         execution_outputs_console += [
             Text(
-                f"{('Out - Final answer' if is_final_answer else 'Out')}: {truncated_output}",
+                f"{('Out - Final answer' if is_final_answer else 'Out')}: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} {truncated_output}",
                 style=(f"bold {YELLOW_HEX}" if is_final_answer else ""),
             ),
         ]

@@ -15,10 +15,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import json
+import sys
 import logging
 import os
 import random
 import uuid
+from datetime import datetime
 from copy import deepcopy
 from dataclasses import asdict, dataclass
 from enum import Enum
@@ -45,6 +47,47 @@ DEFAULT_CODEAGENT_REGEX_GRAMMAR = {
     "value": "Thought: .+?\\nCode:\\n```(?:py|python)?\\n(?:.|\\s)+?\\n```<end_code>",
 }
 
+
+def walk_completion_kwargs(idstr, file, completion_kwargs):
+    """
+    Recursively walk through all items in the completion_kwargs dictionary
+    and print the structure with proper indentation.
+    """
+    def _walk(obj, depth=0):
+        indent = "  " * depth
+
+        if isinstance(obj, dict):
+            for key, value in obj.items():
+                print(f"{indent}{key}: ", end="", file=file)
+                if isinstance(value, (dict, list)):
+                    print("", file=file)
+                    _walk(value, depth + 1)
+                elif isinstance(value, str):
+                    print(value.replace("\\n", '\'), file=file)
+                else:
+                    print(repr(value), file=file)
+                """
+                else:
+                    if key == 'text':
+                        v1 = value.replace("\\n", '\')
+                        print(v1, file=file)
+                    else:
+                        print(repr(value), file=file)
+                """
+        elif isinstance(obj, list):
+            for i, item in enumerate(obj):
+                print(f"{indent}[{i}]: ", end="", file=file)
+                if isinstance(item, (dict, list)):
+                    print("", file=file)
+                    _walk(item, depth + 1)
+                else:
+                    print(repr(item), file=file)
+        else:
+            print(repr(obj), file=file)
+
+    print(f"{idstr} Begin", file=file)
+    _walk(completion_kwargs)
+    print(f"{idstr} End", file=file)
 
 def get_dict_from_nested_dataclasses(obj, ignore_key=None):
     def convert(obj):
@@ -948,6 +991,9 @@ class OpenAIServerModel(Model):
     def __call__(
         self,
         messages: List[Dict[str, str]],
+        logs_dir: str,
+        step_number: int,
+        parent_step_number: int,
         stop_sequences: Optional[List[str]] = None,
         grammar: Optional[str] = None,
         tools_to_call_from: Optional[List[Tool]] = None,
@@ -963,9 +1009,23 @@ class OpenAIServerModel(Model):
             convert_images_to_image_urls=True,
             **kwargs,
         )
+        ll = f"# Request to LLM @ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        if parent_step_number == 0:
+            pth = os.path.join(logs_dir, f"step-{step_number}.md")
+        else:
+            pth = os.path.join(logs_dir, f"{parent_step_number}", f"step-{step_number}.md")
+        with open(pth, 'a') as wfp:
+            walk_completion_kwargs(ll, wfp, completion_kwargs)
         response = self.client.chat.completions.create(**completion_kwargs)
         self.last_input_token_count = response.usage.prompt_tokens
         self.last_output_token_count = response.usage.completion_tokens
+        ll = f"# Response from LLM @ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        if parent_step_number == 0:
+            pth = os.path.join(logs_dir, f"step-{step_number}.md")
+        else:
+            pth = os.path.join(logs_dir, f"{parent_step_number}", f"step-{step_number}.md")
+        with open(pth, 'a') as wfp:
+            walk_completion_kwargs(ll, wfp, response.choices[0].message.model_dump(include={"role", "content", "tool_calls"}))
 
         message = ChatMessage.from_dict(
             response.choices[0].message.model_dump(include={"role", "content", "tool_calls"})

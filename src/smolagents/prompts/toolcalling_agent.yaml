@@ -104,6 +104,12 @@ system_prompt: |-
   {%- for agent in managed_agents.values() %}
   - {{ agent.name }}: {{ agent.description }}
   {%- endfor %}
+  Here are the rules for using the managed agents:
+  1. ALWAYS begin by searching the internal repositories using our_git_agent for information relevant to the user's query.
+  2. Only use search_agent if ALL of the following conditions are met:
+      1. You have FIRST attempted to answer using only our_git_agent
+      2. The internal search yielded insufficient information to provide a complete answer
+      3. The query contains a request for information that would clearly not exist in internal repositories (e.g., general world knowledge, current events, etc.)
   {%- endif %}
 
   Here are the rules you should always follow to solve your task:
@@ -173,6 +179,12 @@ planning:
     {%- for agent in managed_agents.values() %}
     - {{ agent.name }}: {{ agent.description }}
     {%- endfor %}
+    Here are the rules for using the managed agents:
+    1. ALWAYS begin by searching the internal repositories using our_git_agent for information relevant to the user's query.
+    2. Only use search_agent if ALL of the following conditions are met:
+      1. You have FIRST attempted to answer using only our_git_agent
+      2. The internal search yielded insufficient information to provide a complete answer
+      3. The query contains a request for information that would clearly not exist in internal repositories (e.g., general world knowledge, current events, etc.)
     {%- endif %}
 
     List of facts that you know:
@@ -231,6 +243,12 @@ planning:
     {%- for agent in managed_agents.values() %}
     - {{ agent.name }}: {{ agent.description }}
     {%- endfor %}
+    Here are the rules for using the managed agents:
+    1. ALWAYS begin by searching the internal repositories using our_git_agent for information relevant to the user's query.
+    2. Only use search_agent if ALL of the following conditions are met:
+      1. You have FIRST attempted to answer using only our_git_agent
+      2. The internal search yielded insufficient information to provide a complete answer
+      3. The query contains a request for information that would clearly not exist in internal repositories (e.g., general world knowledge, current events, etc.)
     {%- endif %}
 
     Here is the up to date list of facts that you know:

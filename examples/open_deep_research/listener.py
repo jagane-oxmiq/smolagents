@@ -77,18 +77,16 @@ class DirectoryMonitor:
             with open(file_path, 'r') as f:
                 data = json.load(f)
                 
-            # Example processing - replace with your actual processing logic
             print(f"File contains {len(data)} items" if isinstance(data, list) else "Processing JSON object")
             print(f"JSON structure: {json.dumps(data, indent=2)[:200]}...")
             
-            # Additional processing logic would go here
-            # ...
             agent = create_agent(self.chromadb_host, self.chromadb_port, self.chromadb_collection, self.local_dir,
                                     self.llm_host, int(self.llm_port), self.logs, model_id=self.model_id)
 
             answer = agent.run(data['question'])
 
             print(f"Got this answer: {answer}")
+            data['answer'] = answer
             
             print(f"Successfully processed {file_path}")
             
@@ -102,9 +100,12 @@ class DirectoryMonitor:
                 filename = Path(file_path).stem + f"_{timestamp}" + Path(file_path).suffix
                 dest_file_path = self.destination_path / filename
             
+            with open(dest_file_path, 'w') as wfp:
+                wfp.write(json.dumps(data, indent=2))
+
             # Move the file
-            os.rename(file_path, dest_file_path)
-            print(f"Moved processed file to: {dest_file_path}")
+            os.remove(file_path)
+            print(f"Removed processed file. Wrote results to: {dest_file_path}")
             
             return True
         

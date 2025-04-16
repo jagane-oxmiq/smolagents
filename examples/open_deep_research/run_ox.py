@@ -101,8 +101,6 @@ os.makedirs(f"./{BROWSER_CONFIG['downloads_folder']}", exist_ok=True)
 
 def create_agent(chromadb_host:str, chromadb_port:str, chromadb_collection:str, local_dir:str,
                 llm_host:str, llm_port:str, logs:str, model_id="DeepSeek-R1-Distill-Qwen-32B"):
-    full_logs_dir = os.path.join(logs, f"{datetime.now().strftime('%Y-%m-%d-%H:%M:%S')}")
-    os.makedirs(full_logs_dir)
     model = OpenAIServerModel(model_id,
                             api_base=f"http://{llm_host}:{llm_port}/v1",
                             api_key="notused",
@@ -134,7 +132,7 @@ def create_agent(chromadb_host:str, chromadb_port:str, chromadb_collection:str, 
     Your request must be a real sentence, not a google search! Like "Find me this information (...)" rather than a few keywords.
     """,
         provide_run_summary=True,
-        logs_dir=full_logs_dir
+        logs_dir=logs
     )
     text_webbrowser_agent.prompt_templates["managed_agent"]["task"] += """You can navigate to .txt online files.
     If a non-html page is in another format, especially .pdf or a Youtube video, use tool 'inspect_file_as_text' to inspect it.
@@ -153,7 +151,7 @@ def create_agent(chromadb_host:str, chromadb_port:str, chromadb_collection:str, 
     Ask him for questions regarding any of the code in our source trees.
     Additionally, if after some searching you find out that you need more information to answer the question, you can use `final_answer` with your request for clarification as argument to request for more information.""",
         provide_run_summary=True,
-        logs_dir=full_logs_dir
+        logs_dir=logs
     )
 
     manager_agent = CodeAgent(
@@ -164,7 +162,7 @@ def create_agent(chromadb_host:str, chromadb_port:str, chromadb_collection:str, 
         additional_authorized_imports=AUTHORIZED_IMPORTS,
         planning_interval=4,
         managed_agents=[our_git_agent, text_webbrowser_agent],
-        logs_dir=full_logs_dir
+        logs_dir=logs
     )
 
     return manager_agent

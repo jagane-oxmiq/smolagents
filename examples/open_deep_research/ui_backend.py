@@ -19,7 +19,6 @@ app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
 # Global variables
-running_questions = {}  # Store currently running research questions
 finished_directory = None  # Will be set from command line args
 static_directory = None  # Will be set from command line args or default
 jobs_directory = None  # Will be set from command line args
@@ -144,13 +143,6 @@ def submit_deep_research(question_text):
         logger.error(f"Error creating job file: {str(e)}")
         raise
     
-    # Add to running questions for status tracking
-    running_questions[question_id] = {
-        'question': question_text,
-        'status': 'Job submitted - waiting for processing',
-        'started_at': datetime.datetime.now().isoformat()
-    }
-    
     return question_id
 
 
@@ -209,62 +201,6 @@ def extract_keywords(text):
         keywords = ['topic', 'subject', 'concept', 'scenario']
     
     return keywords
-
-
-def research_worker(question_id, question_text):
-    """Worker function that simulates the deep research process"""
-    try:
-        # Update status to in progress
-        running_questions[question_id]['status'] = 'Gathering information from multiple sources...'
-        time.sleep(5)  # Simulate initial work
-        
-        running_questions[question_id]['status'] = 'Analyzing data relationships and patterns...'
-        time.sleep(5)  # Simulate more work
-        
-        running_questions[question_id]['status'] = 'Synthesizing insights and formulating conclusions...'
-        time.sleep(5)  # Simulate final work
-        
-        # Generate a structured answer
-        answer = generate_structured_answer(question_text)
-        
-        # Create a result JSON file
-        result = {
-            'question': question_text,
-            'answer': answer,
-            'logs_dir': f"research_logs/{question_id}"
-        }
-        
-        # Ensure the directory exists
-        os.makedirs(finished_directory, exist_ok=True)
-        
-        # Create a logs directory
-        logs_dir = os.path.join(finished_directory, f"../research_logs/{question_id}")
-        os.makedirs(logs_dir, exist_ok=True)
-        
-        # Write a sample log file
-        with open(os.path.join(logs_dir, 'research.log'), 'w') as log_file:
-            log_file.write(f"Oxmiq DeepInsights research log for: {question_text}\n")
-            log_file.write(f"Started at: {running_questions[question_id]['started_at']}\n")
-            log_file.write("Phase 1: Initial data collection completed\n")
-            log_file.write("Phase 2: Pattern analysis completed\n")
-            log_file.write("Phase 3: Insight synthesis completed\n")
-            log_file.write("Research process successfully concluded\n")
-        
-        # Save the result
-        result_path = os.path.join(finished_directory, f"{question_id}.json")
-        with open(result_path, 'w') as f:
-            json.dump(result, f, indent=2)
-        
-        # Remove from running questions
-        del running_questions[question_id]
-        logger.info(f"Research completed for question: {question_text}")
-        
-    except Exception as e:
-        logger.error(f"Error in research worker: {str(e)}")
-        # Update status to error
-        if question_id in running_questions:
-            running_questions[question_id]['status'] = f"Error: {str(e)}"
-
 
 # API Endpoints
 @app.route('/api/submit', methods=['POST'])
@@ -338,12 +274,15 @@ def get_running_questions():
                             status_message = f"Error: {job_data.get('error', 'Research failed')}"
                         
                         # Add job to the questions list
-                        questions_list.append({
+                        ql = {
                             'id': question_id,
                             'question': job_data.get('question', 'Unknown question'),
                             'status': status_message,
                             'started_at': datetime.datetime.fromtimestamp(job_data.get('timestamp', 0)).isoformat()
-                        })
+                        }
+                        if 'logs_dir' in job_data:
+                            ql['logs_dir'] = job_data['logs_dir']
+                        questions_list.append(ql)
                 
             except json.JSONDecodeError as e:
                 logger.error(f"JSON decode error in {file_path}: {str(e)}")
@@ -1594,6 +1533,11 @@ async function loadRunningQuestions() {
                             <p><strong>Status:</strong> ${escapeHtml(item.status)}</p>
                             <p><strong>Started:</strong> ${formatDate(item.started_at)}</p>
                         </div>
+                        ${item.logs_dir ? `
+                        <div class="question-logs">
+                            <a href="logs/${encodeURIComponent(item.logs_dir)}" class="log-link" target="_blank">View Research Logs</a>
+                        </div>
+                        ` : ''}
                     </div>
                 `).join('');
                 

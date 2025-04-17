@@ -311,8 +311,13 @@ class MultiStepAgent:
         if 'PARENT_STEP_NUMBER' in os.environ:
             self._parent_step_number = int(os.environ['PARENT_STEP_NUMBER'])
             os.makedirs(os.path.join(self._logs_dir, f"{self._parent_step_number}"), exist_ok=True)
+            pth = os.path.join(self._logs_dir, f"{self._parent_step_number}", f"index.md")
         else:
             self._parent_step_number = 0
+            pth = os.path.join(self._logs_dir, f"index.md")
+        with open(pth, 'a') as wfp:
+            ll = f"# {self.agent_name} @ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}: {task}"
+            wfp.write(ll + '\n')
         max_steps = max_steps or self.max_steps
         self.task = task
         self.interrupt_switch = False
@@ -387,7 +392,7 @@ You have been provided with these additional arguments, that you can access usin
         return ActionStep(step_number=self.step_number, start_time=step_start_time, observations_images=images)
 
     def _execute_step(self, task: str, memory_step: ActionStep) -> Union[None, Any]:
-        ll = f"# [Step {self.step_number} @ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}](step-{self.step_number}.md)"
+        ll = f"## [Step {self.step_number} @ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}](step-{self.step_number}.md)"
         self.logger.log_rule(ll, level=LogLevel.INFO)
         if self._parent_step_number == 0:
             pth = os.path.join(self._logs_dir, f"index.md")
@@ -418,7 +423,7 @@ You have been provided with these additional arguments, that you can access usin
 
     def _handle_max_steps_reached(self, task: str, images: List["PIL.Image.Image"], step_start_time: float) -> Any:
         final_answer = self.provide_final_answer(task, images)
-        ll = f"Reached max steps. @ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        ll = f"## Reached max steps. @ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         final_memory_step = ActionStep(step_number=self.step_number, error=AgentMaxStepsError(ll, self.logger))
         if self._parent_step_number == 0:
             pth = os.path.join(self._logs_dir, f"index.md")

@@ -1196,7 +1196,7 @@ class OpenAIServerModel(ApiModel):
             convert_images_to_image_urls=True,
             **kwargs,
         )
-        ll = f"# Request to LLM @ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        ll = f"## Request to LLM @ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         if parent_step_number == 0:
             pth = os.path.join(logs_dir, f"step-{step_number}.md")
         else:
@@ -1206,7 +1206,7 @@ class OpenAIServerModel(ApiModel):
         response = self.client.chat.completions.create(**completion_kwargs)
         self.last_input_token_count = response.usage.prompt_tokens
         self.last_output_token_count = response.usage.completion_tokens
-        ll = f"# Response from LLM @ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        ll = f"## Response from LLM @ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         if parent_step_number == 0:
             pth = os.path.join(logs_dir, f"step-{step_number}.md")
         else:

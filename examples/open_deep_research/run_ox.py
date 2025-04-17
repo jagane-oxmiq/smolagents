@@ -101,6 +101,7 @@ os.makedirs(f"./{BROWSER_CONFIG['downloads_folder']}", exist_ok=True)
 
 def create_agent(chromadb_host:str, chromadb_port:str, chromadb_collection:str, local_dir:str,
                 llm_host:str, llm_port:str, logs:str, model_id="DeepSeek-R1-Distill-Qwen-32B"):
+    os.environ.pop('PARENT_STEP_NUMBER', None)
     model = OpenAIServerModel(model_id,
                             api_base=f"http://{llm_host}:{llm_port}/v1",
                             api_key="notused",

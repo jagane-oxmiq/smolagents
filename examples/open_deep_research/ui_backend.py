@@ -367,6 +367,53 @@ def get_logs(logs_dir):
         return jsonify({'error': str(e)}), 500
 
 
+def _convert_and_send(parentdir, path):
+    if path.endswith('.md'):
+        # Read the markdown file
+        with open(os.path.join(parentdir, path), 'r') as f:
+            md_content = f.read()
+        
+        # Convert markdown to HTML
+        html_content = markdown.markdown(md_content)
+        
+        # Wrap in a basic HTML template
+        final_html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Oxmiq DeepInsights</title>
+<link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<div class="container">
+<header>
+    <h1>Oxmiq DeepInsights</h1>
+    <nav>
+        <ul class="tabs">
+            <li><a href="/static/#ask" class="tab-link" data-tab="ask">Ask Question</a></li>
+            <li><a href="/static/#status" class="tab-link" data-tab="status">Research Status</a></li>
+            <li><a href="/static/#completed" class="tab-link" data-tab="completed">Completed Research</a></li>
+        </ul>
+    </nav>
+</header>
+
+<main>
+    <div class="markdown-content">
+        {html_content}
+    </div>
+</main>
+
+<footer>
+    <p>&copy; 2025 Oxmiq DeepInsights</p>
+</footer>
+</div>
+</body>
+</html>"""
+        return Response(final_html, mimetype='text/html')
+    else:
+        return send_from_directory(parentdir, path)
+
 @app.route('/static/logs/<path:path>')
 def serve_logs(path):
     print(f"____________________ {path}")
@@ -376,7 +423,7 @@ def serve_logs(path):
         print(f"00000000000000000000 {full_path}")
         if os.path.exists(full_path) and os.path.isfile(full_path):
             print(f"11111111111111111111 {full_path}")
-            return send_from_directory(os.path.join(static_directory, 'logs'), path)
+            return _convert_and_send(os.path.join(static_directory, 'logs'), path)
         
         # If index.html is requested but doesn't exist, try index.md
         if path == 'index.html' or path.endswith('/index.html'):
@@ -444,7 +491,7 @@ def serve_logs(path):
             # Path ends with /, check for index.html
             index_html_path = os.path.join(static_directory, 'logs', path, 'index.html')
             if os.path.exists(index_html_path) and os.path.isfile(index_html_path):
-                return send_from_directory(os.path.join(static_directory, 'logs', path), 'index.html')
+                return _convert_and_send(os.path.join(static_directory, 'logs', path), 'index.html')
             
             # Check for index.md
             index_md_path = os.path.join(static_directory, 'logs', path, 'index.md')
@@ -511,7 +558,7 @@ def serve_static(path):
         # Try to serve the requested file directly
         full_path = os.path.join(static_directory, path)
         if os.path.exists(full_path) and os.path.isfile(full_path):
-            return send_from_directory(static_directory, path)
+            return _convert_and_send(static_directory, path)
         
         # If index.html is requested but doesn't exist, try index.md
         if path == 'index.html' or path.endswith('/index.html'):
@@ -575,7 +622,7 @@ def serve_static(path):
             # Path ends with /, check for index.html
             index_html_path = os.path.join(static_directory, path, 'index.html')
             if os.path.exists(index_html_path) and os.path.isfile(index_html_path):
-                return send_from_directory(os.path.join(static_directory, path), 'index.html')
+                return _convert_and_send(os.path.join(static_directory, path), 'index.html')
             
             # Check for index.md
             index_md_path = os.path.join(static_directory, path, 'index.md')

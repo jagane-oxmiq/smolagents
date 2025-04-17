@@ -75,9 +75,9 @@ class Monitor:
         console_outputs += "]"
         self.logger.log(Text(console_outputs, style="dim"), level=1)
         if agent._parent_step_number == 0:
-            pth = os.path.join(agent._logs_dir, f"summary.md")
+            pth = os.path.join(agent._logs_dir, f"index.md")
         else:
-            pth = os.path.join(agent._logs_dir, f"{agent._parent_step_number}", f"summary.md")
+            pth = os.path.join(agent._logs_dir, f"{agent._parent_step_number}", f"index.md")
         with open(pth, 'a') as wfp:
             wfp.write(f"{console_outputs}\nAgent task={agent.task}\n------------------------------------\n")
 

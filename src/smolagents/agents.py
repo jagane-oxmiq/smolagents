@@ -390,9 +390,9 @@ You have been provided with these additional arguments, that you can access usin
         ll = f"# Step {self.step_number} @ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         self.logger.log_rule(ll, level=LogLevel.INFO)
         if self._parent_step_number == 0:
-            pth = os.path.join(self._logs_dir, f"summary.md")
+            pth = os.path.join(self._logs_dir, f"index.md")
         else:
-            pth = os.path.join(self._logs_dir, f"{self._parent_step_number}", f"summary.md")
+            pth = os.path.join(self._logs_dir, f"{self._parent_step_number}", f"index.md")
         with open(pth, 'a') as wfp:
             wfp.write(ll + '\n')
         final_answer = self.step(memory_step)
@@ -421,9 +421,9 @@ You have been provided with these additional arguments, that you can access usin
         ll = f"Reached max steps. @ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         final_memory_step = ActionStep(step_number=self.step_number, error=AgentMaxStepsError(ll, self.logger))
         if self._parent_step_number == 0:
-            pth = os.path.join(self._logs_dir, f"summary.md")
+            pth = os.path.join(self._logs_dir, f"index.md")
         else:
-            pth = os.path.join(self._logs_dir, f"{self._parent_step_number}", f"summary.md")
+            pth = os.path.join(self._logs_dir, f"{self._parent_step_number}", f"index.md")
         with open(pth, 'a') as wfp:
             wfp.write(ll + '\n')
         final_memory_step.action_output = final_answer

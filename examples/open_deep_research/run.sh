@@ -20,4 +20,4 @@ python listener.py \
     --llm-host 127.0.0.1 \
     --llm-port 11434 \
     --model QwQ-32B \
-    --logs './logs'
+    --logs './static/logs'

@@ -80,8 +80,13 @@ class DirectoryMonitor:
             print(f"File contains {len(data)} items" if isinstance(data, list) else "Processing JSON object")
             print(f"JSON structure: {json.dumps(data, indent=2)[:200]}...")
             
-            full_logs_dir = os.path.join(self.logs, f"{datetime.now().strftime('%Y-%m-%d-%H:%M:%S')}")
+            lfname = f"{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}"
+            full_logs_dir = os.path.join(self.logs, lfname)
             os.makedirs(full_logs_dir)
+            data['logs_dir'] = lfname
+            data['status'] = 'running'
+            with open(file_path, 'w') as wfp:
+                wfp.write(json.dumps(data, indent=2))
             agent = create_agent(self.chromadb_host, self.chromadb_port, self.chromadb_collection, self.local_dir,
                                     self.llm_host, int(self.llm_port), full_logs_dir, model_id=self.model_id)
 
@@ -89,7 +94,6 @@ class DirectoryMonitor:
 
             print(f"Got this answer: {answer}")
             data['answer'] = answer
-            data['logs_dir'] = full_logs_dir
             
             print(f"Successfully processed {file_path}")
             

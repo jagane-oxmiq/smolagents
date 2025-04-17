@@ -387,7 +387,7 @@ You have been provided with these additional arguments, that you can access usin
         return ActionStep(step_number=self.step_number, start_time=step_start_time, observations_images=images)
 
     def _execute_step(self, task: str, memory_step: ActionStep) -> Union[None, Any]:
-        ll = f"# Step {self.step_number} @ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        ll = f"# [Step {self.step_number} @ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}](step-{self.step_number}.md)"
         self.logger.log_rule(ll, level=LogLevel.INFO)
         if self._parent_step_number == 0:
             pth = os.path.join(self._logs_dir, f"index.md")

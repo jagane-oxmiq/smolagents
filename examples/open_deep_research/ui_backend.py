@@ -437,7 +437,7 @@ def serve_logs(path):
         print(f"00000000000000000000 {full_path}")
         if os.path.exists(full_path) and os.path.isfile(full_path):
             print(f"11111111111111111111 {full_path}")
-            return send_from_directory(static_directory, path)
+            return send_from_directory(os.path.join(static_directory, 'logs'), path)
         
         # If index.html is requested but doesn't exist, try index.md
         if path == 'index.html' or path.endswith('/index.html'):

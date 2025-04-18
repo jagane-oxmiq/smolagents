@@ -420,9 +420,7 @@ def serve_logs(path):
     try:
         # Try to serve the requested file directly
         full_path = os.path.join(static_directory, "logs", path)
-        print(f"00000000000000000000 {full_path}")
         if os.path.exists(full_path) and os.path.isfile(full_path):
-            print(f"11111111111111111111 {full_path}")
             return _convert_and_send(os.path.join(static_directory, 'logs'), path)
         
         # If index.html is requested but doesn't exist, try index.md
@@ -433,61 +431,14 @@ def serve_logs(path):
             
             if os.path.exists(full_md_path) and os.path.isfile(full_md_path):
                 logger.info(f"Serving index.md instead of index.html from {md_path}")
-                # Read the markdown file
-                with open(full_md_path, 'r') as f:
-                    md_content = f.read()
-                
-                # Convert markdown to HTML
-                html_content = markdown.markdown(md_content)
-                
-                # Wrap in a basic HTML template
-                final_html = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Oxmiq DeepInsights</title>
-    <link rel="stylesheet" href="/static/styles.css">
-</head>
-<body>
-    <div class="container">
-        <header>
-            <h1>Oxmiq DeepInsights</h1>
-            <nav>
-                <ul class="tabs">
-                    <li><a href="/static/#ask" class="tab-link" data-tab="ask">Ask Question</a></li>
-                    <li><a href="/static/#status" class="tab-link" data-tab="status">Research Status</a></li>
-                    <li><a href="/static/#completed" class="tab-link" data-tab="completed">Completed Research</a></li>
-                </ul>
-            </nav>
-        </header>
-
-        <main>
-            <div class="markdown-content">
-                {html_content}
-            </div>
-        </main>
-
-        <footer>
-            <p>&copy; 2025 Oxmiq DeepInsights</p>
-        </footer>
-    </div>
-</body>
-</html>"""
-                
-                return Response(final_html, mimetype='text/html')
-        
+                return _convert_and_send(os.path.join(static_directory, directory), 'index.md')
         # Check if the requested path is a directory and look for index.html or index.md
         if not path.endswith('/'):
-            print(f"22222222222222222222 {path}")
             dir_path = os.path.join(static_directory, 'logs', path)
-            print(f"55555555555555555555 {dir_path}")
             if os.path.exists(dir_path) and os.path.isdir(dir_path):
                 # Redirect to directory with trailing slash
-                print(f"4444444444444444444 /static/{path}")
                 return redirect(f'/static/logs/{path}/')
         else:
-            print(f"33333333333333333333 {path}")
             # Path ends with /, check for index.html
             index_html_path = os.path.join(static_directory, 'logs', path, 'index.html')
             if os.path.exists(index_html_path) and os.path.isfile(index_html_path):
@@ -497,50 +448,7 @@ def serve_logs(path):
             index_md_path = os.path.join(static_directory, 'logs', path, 'index.md')
             if os.path.exists(index_md_path) and os.path.isfile(index_md_path):
                 logger.info(f"Serving index.md from directory {path}")
-                # Read the markdown file
-                with open(index_md_path, 'r') as f:
-                    md_content = f.read()
-                
-                # Convert markdown to HTML
-                html_content = markdown.markdown(md_content)
-                
-                # Wrap in a basic HTML template
-                final_html = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Oxmiq DeepInsights</title>
-    <link rel="stylesheet" href="/static/styles.css">
-</head>
-<body>
-    <div class="container">
-        <header>
-            <h1>Oxmiq DeepInsights</h1>
-            <nav>
-                <ul class="tabs">
-                    <li><a href="/static/#ask" class="tab-link" data-tab="ask">Ask Question</a></li>
-                    <li><a href="/static/#status" class="tab-link" data-tab="status">Research Status</a></li>
-                    <li><a href="/static/#completed" class="tab-link" data-tab="completed">Completed Research</a></li>
-                </ul>
-            </nav>
-        </header>
-
-        <main>
-            <div class="markdown-content">
-                {html_content}
-            </div>
-        </main>
-
-        <footer>
-            <p>&copy; 2025 Oxmiq DeepInsights</p>
-        </footer>
-    </div>
-</body>
-</html>"""
-                
-                return Response(final_html, mimetype='text/html')
-        
+                return _convert_and_send(os.path.join(static_directory, 'logs', path), 'index.md')
         # If we get here, the file was not found
         logger.warning(f"File not found: {path}")
         return f"Error: File not found - {path}", 404
@@ -568,50 +476,7 @@ def serve_static(path):
             
             if os.path.exists(full_md_path) and os.path.isfile(full_md_path):
                 logger.info(f"Serving index.md instead of index.html from {md_path}")
-                # Read the markdown file
-                with open(full_md_path, 'r') as f:
-                    md_content = f.read()
-                
-                # Convert markdown to HTML
-                html_content = markdown.markdown(md_content)
-                
-                # Wrap in a basic HTML template
-                final_html = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Oxmiq DeepInsights</title>
-    <link rel="stylesheet" href="/static/styles.css">
-</head>
-<body>
-    <div class="container">
-        <header>
-            <h1>Oxmiq DeepInsights</h1>
-            <nav>
-                <ul class="tabs">
-                    <li><a href="/static/#ask" class="tab-link" data-tab="ask">Ask Question</a></li>
-                    <li><a href="/static/#status" class="tab-link" data-tab="status">Research Status</a></li>
-                    <li><a href="/static/#completed" class="tab-link" data-tab="completed">Completed Research</a></li>
-                </ul>
-            </nav>
-        </header>
-
-        <main>
-            <div class="markdown-content">
-                {html_content}
-            </div>
-        </main>
-
-        <footer>
-            <p>&copy; 2025 Oxmiq DeepInsights</p>
-        </footer>
-    </div>
-</body>
-</html>"""
-                
-                return Response(final_html, mimetype='text/html')
-        
+                return _convert_and_send(os.path.join(static_directory, directory), 'index.md')
         # Check if the requested path is a directory and look for index.html or index.md
         if not path.endswith('/'):
             dir_path = os.path.join(static_directory, path)
@@ -628,49 +493,7 @@ def serve_static(path):
             index_md_path = os.path.join(static_directory, path, 'index.md')
             if os.path.exists(index_md_path) and os.path.isfile(index_md_path):
                 logger.info(f"Serving index.md from directory {path}")
-                # Read the markdown file
-                with open(index_md_path, 'r') as f:
-                    md_content = f.read()
-                
-                # Convert markdown to HTML
-                html_content = markdown.markdown(md_content)
-                
-                # Wrap in a basic HTML template
-                final_html = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Oxmiq DeepInsights</title>
-    <link rel="stylesheet" href="/static/styles.css">
-</head>
-<body>
-    <div class="container">
-        <header>
-            <h1>Oxmiq DeepInsights</h1>
-            <nav>
-                <ul class="tabs">
-                    <li><a href="/static/#ask" class="tab-link" data-tab="ask">Ask Question</a></li>
-                    <li><a href="/static/#status" class="tab-link" data-tab="status">Research Status</a></li>
-                    <li><a href="/static/#completed" class="tab-link" data-tab="completed">Completed Research</a></li>
-                </ul>
-            </nav>
-        </header>
-
-        <main>
-            <div class="markdown-content">
-                {html_content}
-            </div>
-        </main>
-
-        <footer>
-            <p>&copy; 2025 Oxmiq DeepInsights</p>
-        </footer>
-    </div>
-</body>
-</html>"""
-                
-                return Response(final_html, mimetype='text/html')
+                return _convert_and_send(os.path.join(static_directory, path), 'index.md')
         
         # If we get here, the file was not found
         logger.warning(f"File not found: {path}")

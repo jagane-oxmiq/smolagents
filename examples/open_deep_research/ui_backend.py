@@ -374,7 +374,7 @@ def _convert_and_send(parentdir, path):
             md_content = f.read()
         
         # Convert markdown to HTML
-        html_content = markdown.markdown(md_content)
+        html_content = markdown.markdown(md_content, extensions=['fenced_code'])
         
         # Wrap in a basic HTML template
         final_html = f"""<!DOCTYPE html>

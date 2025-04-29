@@ -332,6 +332,12 @@ def process_file(git_repo_name:str, filename:str, code_splitter, token_embedder,
     elif '.vscode' in filename:
         print(f"process_file: Skipping filename={filename} since it has .vscode in path")
         return
+    elif '.cpmcache' in filename:
+        print(f"process_file: Skipping filename={filename} since it has .cpmcache in path")
+        return
+    elif 'site-packages' in filename:
+        print(f"process_file: Skipping filename={filename} since it has site-packages in path")
+        return
     mtime = os.path.getmtime(filename)
     if filename in files_info:
         if mtime <= files_info[filename]['mtime']:
@@ -402,7 +408,6 @@ def guess_language_from_filename(filename):
         ".css": "css",
         ".csv": "csv",
         ".cuda": "cuda",
-        ".d": "d",
         ".dart": "dart",
         ".dockerfile": "dockerfile",
         ".doxygen": "doxygen",
@@ -614,8 +619,8 @@ def exit_handler():
         ofile.write(f"{json.dumps(repos_info)}")
 
 def main():
-    if len(sys.argv) != 8:
-        print(f"Usage: python codesplit.py <repos_info.json> <files_info.json> <chromadb_host> <chromadb_port> <chromadb_collection> <git_repo_name> <dir_with_local_copy_of_git_repo>")
+    if len(sys.argv) != 9:
+        print(f"Usage: python codesplit.py <repos_info.json> <files_info.json> <chromadb_host> <chromadb_port> <chromadb_collection> <git_repo_name> <dir_with_local_copy_of_git_repo> cpu|cuda")
         os._exit(255)
 
     global mtimes_file, files_info
@@ -643,7 +648,7 @@ def main():
     chroma_collection = chroma_client.get_or_create_collection(name=sys.argv[5])
 
     code_splitters = {}
-    token_embedder: TokenEmbedder = TokenEmbedder(EMBEDDING_MODEL, device='cpu')
+    token_embedder: TokenEmbedder = TokenEmbedder(EMBEDDING_MODEL, device=sys.argv[8])
     scan_source_tree(sys.argv[6], sys.argv[7], code_splitters, token_embedder, chroma_collection)
 
 if __name__ == "__main__":

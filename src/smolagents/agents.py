@@ -1143,6 +1143,15 @@ class ToolCallingAgent(MultiStepAgent):
         arguments = self._substitute_state_variables(arguments)
         is_managed_agent = tool_name in self.managed_agents
 
+        if is_managed_agent:
+            if self._parent_step_number == 0:
+                pth = os.path.join(logs_dir, f"step-{self.step_number}.md")
+            else:
+                pth = os.path.join(logs_dir, f"{self._parent_step_number}", f"step-{self.step_number}.md")
+            with open(pth, 'a') as wfp:
+                # [Agent Call @ 2025-04-17 16:59:23](1/)
+                wfp.write(f"# Agent Call @ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}. Arguments={arguments}\n")
+                wfp.write(f"# [Agent Call Details]({self.step_number}/)\n")
         try:
             # Call tool with appropriate arguments
             if isinstance(arguments, dict):

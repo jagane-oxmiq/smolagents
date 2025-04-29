@@ -11,4 +11,4 @@
 # intel-extension-for-pytorch
 # tt-metal
 #
-python codesplit.py `pwd`/index/repos_info.json `pwd`/index/files_info.json 127.0.0.1 8000 monorepo_collection oxpython /home/mdharmap/working/oxpython
+python codesplit.py `pwd`/index/repos_info.json `pwd`/index/files_info.json 127.0.0.1 8000 monorepo_collection oxpython /home/mdharmap/working/for-indexing/oxpython cpu

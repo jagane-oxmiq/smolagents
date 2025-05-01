@@ -11,7 +11,7 @@ from urllib.parse import unquote, urljoin, urlparse
 
 import pathvalidate
 import requests
-from serpapi import GoogleSearch
+import serpapi
 
 from smolagents import Tool
 
@@ -213,8 +213,8 @@ class SimpleTextBrowser:
         if filter_year is not None:
             params["tbs"] = f"cdr:1,cd_min:01/01/{filter_year},cd_max:12/31/{filter_year}"
 
-        search = GoogleSearch(params)
-        results = search.get_dict()
+        client = serpapi.Client(api_key=os.getenv("API_KEY"))
+        results = client.search(engine='google', q=f'{query}')
         self.page_title = f"{query} - Search"
         if "organic_results" not in results.keys():
             raise Exception(f"No results found for query: '{query}'. Use a less specific query.")

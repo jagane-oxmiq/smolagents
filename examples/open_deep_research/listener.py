@@ -82,7 +82,7 @@ class DirectoryMonitor:
             
             lfname = f"{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}"
             full_logs_dir = os.path.join(self.logs, lfname)
-            os.makedirs(full_logs_dir)
+            os.makedirs(full_logs_dir, exist_ok=True)
             data['logs_dir'] = lfname
             data['status'] = 'running'
             with open(file_path, 'w') as wfp:

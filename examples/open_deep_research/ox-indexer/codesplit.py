@@ -36,7 +36,7 @@ from tree_sitter_language_pack import get_language, get_parser
 import chromadb
 
 #EMBEDDING_MODEL='Alibaba-NLP/gte-Qwen2-1.5B-instruct'
-EMBEDDING_MODEL='/home/mdharmap/models/gte-Qwen2-1.5B-instruct-half'
+EMBEDDING_MODEL='/models/gte-Qwen2-1.5B-instruct-half'
 
 repos_info_file = None
 repos_info = {}

@@ -144,6 +144,7 @@ class ChatMessage:
 
     @classmethod
     def from_dict(cls, data: dict, raw: Any | None = None) -> "ChatMessage":
+        print(f'ChatMessage.from_dict: raw={raw}, tool_calls={data.get("tool_calls")}')
         if data.get("tool_calls"):
             tool_calls = [
                 ChatMessageToolCall(

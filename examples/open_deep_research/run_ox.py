@@ -19,6 +19,7 @@ from scripts.visual_qa import visualizer
 
 from smolagents import (
     CodeAgent,
+    ToolCollection,
     GoogleSearchTool,
     # HfApiModel,
     LiteLLMModel,
@@ -33,6 +34,7 @@ from scripts.ox_coderag import (
     ListRepositories
 )
 
+from mcp import StdioServerParameters
 
 AUTHORIZED_IMPORTS = [
     "requests",
@@ -155,6 +157,33 @@ def create_agent(chromadb_host:str, chromadb_port:str, chromadb_collection:str, 
         logs_dir=logs
     )
 
+    server_parameters = StdioServerParameters(
+            command="./github-mcp-server",
+            args=[
+                "--read-only",
+                "stdio" 
+            ],
+            env={
+                'GITHUB_PERSONAL_ACCESS_TOKEN': os.environ['GH_TOKEN'],
+                'GITHUB_TOOLSETS': 'issues'
+                }
+        )
+
+    with ToolCollection.from_mcp(server_parameters, trust_remote_code=True) as tool_collection:
+        git_issues_agent = CodeAgent(
+                    model=model,
+                    name="git_issues_agent",
+                    tools=[*tool_collection.tools], add_base_tools=True,
+                    max_steps=15,
+                    additional_authorized_imports= ["json",],
+                    verbosity_level=2,
+                    planning_interval=4,
+                    provide_run_summary=True,
+                    description="""A team member that will search our confidential issues database to answer your question.
+    Ask him for questions regarding any issues or bugs reported against our software.
+    Additionally, if after some searching you find out that you need more information to answer the question, you can use `final_answer` with your request for clarification as argument to request for more information.""",
+                    logs_dir=logs)
+
     manager_agent = CodeAgent(
         model=model,
         tools=[visualizer, TextInspectorTool(model, text_limit)],
@@ -162,7 +191,7 @@ def create_agent(chromadb_host:str, chromadb_port:str, chromadb_collection:str, 
         verbosity_level=2,
         additional_authorized_imports=AUTHORIZED_IMPORTS,
         planning_interval=4,
-        managed_agents=[our_git_agent, text_webbrowser_agent],
+        managed_agents=[our_git_agent, git_issues_agent],
         logs_dir=logs
     )
 

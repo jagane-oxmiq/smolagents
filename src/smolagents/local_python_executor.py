@@ -1476,7 +1476,6 @@ class LocalPythonExecutor(PythonExecutor):
         self.static_tools = None
 
     def __call__(self, code_action: str) -> Tuple[Any, str, bool]:
-        print(f"AAAAAAAAAAAAAAAAAAAA: code_action={code_action}")
         output, is_final_answer = evaluate_python_code(
             code_action,
             static_tools=self.static_tools,

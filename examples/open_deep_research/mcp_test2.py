@@ -3,21 +3,20 @@ from smolagents import ToolCollection, CodeAgent
 from mcp import StdioServerParameters
 from smolagents.models import OpenAIServerModel
 
+AUTHORIZED_IMPORTS = [
+    "json",
+]
+
 server_parameters = StdioServerParameters(
-        command="uvx",
+        command="./github-mcp-server",
         args=[
-          "chroma-mcp", 
-          "--client-type", 
-          "http", 
-          "--host", 
-          "127.0.0.1", 
-          "--port", 
-          "8000", 
-          "--custom-auth-credentials",
-          "notused",
-          "--ssl",
-          "false"
-        ]
+            "--read-only",
+            "stdio" 
+        ],
+        env={
+            'GITHUB_PERSONAL_ACCESS_TOKEN': 'blahblahblah',
+            'GITHUB_TOOLSETS': 'issues'
+            }
     )
 
 model_id = 'QwQ-32B'
@@ -33,8 +32,9 @@ with ToolCollection.from_mcp(server_parameters, trust_remote_code=True) as tool_
                     model=model,
                     tools=[*tool_collection.tools], add_base_tools=True,
                     max_steps=25,
+                    additional_authorized_imports=AUTHORIZED_IMPORTS,
                     verbosity_level=2,
                     planning_interval=4,
                     logs_dir="/tmp")
 
-    agent.run("List the collections in this chromadb")
+    agent.run("Find out the name of this github user")

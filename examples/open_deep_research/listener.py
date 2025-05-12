@@ -7,7 +7,7 @@ import pyinotify
 import argparse
 from pathlib import Path
 from run_ox import create_agent
-
+import traceback
 
 class DirectoryMonitor:
     def __init__(self, directory_path, destination_path,
@@ -79,11 +79,16 @@ class DirectoryMonitor:
                 
             print(f"File contains {len(data)} items" if isinstance(data, list) else "Processing JSON object")
             print(f"JSON structure: {json.dumps(data, indent=2)[:200]}...")
-            
-            lfname = f"{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}"
-            full_logs_dir = os.path.join(self.logs, lfname)
+
+            if 'logs_dir' in data:
+                full_logs_dir = os.path.join(self.logs, data['logs_dir'])
+                print(f"Using existing logs dir {full_logs_dir}")
+            else:
+                lfname = f"{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}"
+                data['logs_dir'] = lfname
+                full_logs_dir = os.path.join(self.logs, lfname)
+                print(f"Creating new logs dir {full_logs_dir}")
             os.makedirs(full_logs_dir, exist_ok=True)
-            data['logs_dir'] = lfname
             data['status'] = 'running'
             with open(file_path, 'w') as wfp:
                 wfp.write(json.dumps(data, indent=2))
@@ -120,6 +125,7 @@ class DirectoryMonitor:
             print(f"Error: {file_path} is not a valid JSON file")
         except Exception as e:
             print(f"Error processing {file_path}: {str(e)}")
+            traceback.print_exc()
         
         return False
     

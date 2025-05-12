@@ -21,4 +21,4 @@ python listener.py \
     --llm-host $HH \
     --llm-port $PP \
     --model QwQ-32B \
-    --logs './static/logs'  2>&1 | tee /tmp/output.log
+    --logs './static/logs'

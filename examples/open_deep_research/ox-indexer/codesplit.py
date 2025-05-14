@@ -36,7 +36,7 @@ from tree_sitter_language_pack import get_language, get_parser
 import chromadb
 
 #EMBEDDING_MODEL='Alibaba-NLP/gte-Qwen2-1.5B-instruct'
-EMBEDDING_MODEL='/models/gte-Qwen2-1.5B-instruct-half'
+EMBEDDING_MODEL='/home/mdharmap/models/gte-Qwen2-1.5B-instruct-half'
 
 repos_info_file = None
 repos_info = {}
@@ -323,7 +323,99 @@ class CodeSplitter:
         else:
             raise ValueError(f"Could not parse code with language {self.language}.")
 
-def process_file(git_repo_name:str, filename:str, code_splitter, token_embedder, chroma_collection):
+import torch
+from transformers import AutoTokenizer, AutoModelForCausalLM
+
+class CodeSummarizer:
+    def __init__(self, model_name="Qwen/Qwen2.5-Coder-32B-Instruct", device=None):
+        """
+        Initialize the CodeSummarizer with the Qwen2.5-Coder model.
+        
+        Args:
+            model_name (str): HuggingFace model identifier
+            device (str, optional): Device to run the model on ('cuda', 'cpu', etc.)
+                                   If None, will use CUDA if available.
+        """
+        self.model_name = model_name
+        
+        # Set device
+        if device is None:
+            self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        else:
+            self.device = device
+            
+        # Load tokenizer and model
+        print(f"Loading {model_name} on {self.device}...")
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+        self.model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            device_map=self.device,
+            trust_remote_code=True
+        )
+        print("CodeSummarizer: Model loaded successfully!")
+        
+    def summarize(self, code_snippet, max_new_tokens=256, temperature=0.2):
+        """
+        Summarize the given code snippet.
+        
+        Args:
+            code_snippet (str): The code to summarize
+            max_new_tokens (int): Maximum number of tokens to generate
+            temperature (float): Temperature for sampling (lower = more deterministic)
+            
+        Returns:
+            str: The generated summary of the code
+        """
+        # Create prompt in the format expected by Qwen models
+        prompt = f"""<|im_start|>system
+You are a helpful AI assistant that summarizes code concisely.
+<|im_end|>
+<|im_start|>user
+Please summarize this code in a few sentences:
+{code_snippet}
+<|im_end|>
+<|im_start|>assistant
+"""
+        
+        # Tokenize input
+        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
+        
+        # Generate summary
+        with torch.no_grad():
+            outputs = self.model.generate(
+                inputs.input_ids,
+                max_new_tokens=max_new_tokens,
+                do_sample=True,
+                temperature=temperature,
+                pad_token_id=self.tokenizer.pad_token_id,
+                eos_token_id=self.tokenizer.eos_token_id
+            )
+            
+        # Decode the generated summary
+        generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=False)
+        
+        # Extract just the assistant's response
+        summary = generated_text.split("<|im_start|>assistant")[-1]
+        
+        # Remove any trailing tags if present
+        if "<|im_end|>" in summary:
+            summary = summary.split("<|im_end|>")[0]
+        
+        return summary.strip()
+    
+    def __call__(self, code_snippet, max_new_tokens=256, temperature=0.2):
+        """
+        Allow the class to be called directly as a function.
+        
+        Args:
+            Same as summarize() method
+            
+        Returns:
+            str: The generated summary
+        """
+        return self.summarize(code_snippet, max_new_tokens, temperature)
+
+def process_file(git_repo_name:str, filename:str, code_splitter, token_embedder, code_summarizer, chroma_collection):
     global mtimes_file, files_info
     print(f"process_file: Entered. filename={filename}")
     if '.github' in filename:
@@ -352,16 +444,13 @@ def process_file(git_repo_name:str, filename:str, code_splitter, token_embedder,
     metadatas = []
     ids = []
     for split_number in range(len(split_text)):
-        if True:
-            with torch.no_grad():
-                embedding = token_embedder.embed(split_text[split_number])
-        else:
-            embedding = Tensor([[0, 0], [1, 1]])
-        #eem = base64.b64encode(pickle.dumps(embedding[0])).decode('ascii')
-        #res['paragraphs'].append({'text': split_text[split_number], 'embedding': eem})
-        splits.append(split_text[split_number])
+        one_split = split_text[split_number]
+        summary = code_summarizer(one_split)
+        with torch.no_grad():
+            embedding = token_embedder.embed(summary)
+        splits.append(one_split)
         embeddings.append(embedding[0].detach().to('cpu').numpy())
-        metadatas.append({"git": git_repo_name, "fn": filename, "split": str(split_number)})
+        metadatas.append({"git": git_repo_name, "fn": filename, "split": str(split_number), "summary": summary})
         ids.append(f"{split_number}@{filename}")
     chroma_collection.add(documents=splits, embeddings=embeddings, metadatas=metadatas, ids=ids)
     files_info[filename] = res
@@ -564,7 +653,7 @@ def guess_language_from_filename(filename):
             return 'yaml'
         return None
 
-def scan_source_tree(git_repo_name, root_dir, code_splitters, token_embedder, chroma_collection):
+def scan_source_tree(git_repo_name, root_dir, code_splitters, token_embedder, code_summarizer, chroma_collection):
     print(f"scan_source_tree: Entered. root_dir={root_dir}")
     stats = {
         'total_files': 0,
@@ -572,9 +661,9 @@ def scan_source_tree(git_repo_name, root_dir, code_splitters, token_embedder, ch
         'errors': 0,
         'by_extension': {}
     }
-    
+
     print(f"Starting source tree scan at: {root_dir}")
-    
+
     for root, dirs, files in os.walk(root_dir):
         for filename in files:
             file_path = os.path.join(root, filename)
@@ -599,14 +688,12 @@ def scan_source_tree(git_repo_name, root_dir, code_splitters, token_embedder, ch
             
             # Process the source file
             try:
-                process_file(git_repo_name, file_path, code_splitters[language], token_embedder, chroma_collection)
+                process_file(git_repo_name, file_path, code_splitters[language], token_embedder, code_summarizer, chroma_collection)
                 stats['processed_files'] += 1
             except LookupError as e:
                 pass
             except Exception as e:
-                print(f"AAAAAAAAAAAAA {type(e)}")
                 traceback.print_exc()
-                print(f"Error processing {file_path}: {e}")
                 stats['errors'] += 1
     return stats
 
@@ -619,8 +706,8 @@ def exit_handler():
         ofile.write(f"{json.dumps(repos_info)}")
 
 def main():
-    if len(sys.argv) != 9:
-        print(f"Usage: python codesplit.py <repos_info.json> <files_info.json> <chromadb_host> <chromadb_port> <chromadb_collection> <git_repo_name> <dir_with_local_copy_of_git_repo> cpu|cuda")
+    if len(sys.argv) != 10:
+        print(f"Usage: python codesplit.py <repos_info.json> <files_info.json> <chromadb_host> <chromadb_port> <chromadb_collection> <git_repo_name> <dir_with_local_copy_of_git_repo> cpu|cuda cpu|cuda")
         os._exit(255)
 
     global mtimes_file, files_info
@@ -649,7 +736,9 @@ def main():
 
     code_splitters = {}
     token_embedder: TokenEmbedder = TokenEmbedder(EMBEDDING_MODEL, device=sys.argv[8])
-    scan_source_tree(sys.argv[6], sys.argv[7], code_splitters, token_embedder, chroma_collection)
+    code_summarizer: CodeSummarizer = CodeSummarizer(model_name="/home/mdharmap/models/Qwen2.5-Coder-7B-Instruct-AWQ", device=sys.argv[9])
+
+    scan_source_tree(sys.argv[6], sys.argv[7], code_splitters, token_embedder, code_summarizer, chroma_collection)
 
 if __name__ == "__main__":
     main()

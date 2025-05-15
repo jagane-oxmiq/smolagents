@@ -22,21 +22,20 @@ import atexit
 import traceback
 from dataclasses import dataclass
 from typing import List, Optional, Union
+import requests
 
 import torch
 import torch.nn.functional as F
 from torch import Tensor
-from transformers import AutoTokenizer, AutoModel
+from transformers import AutoTokenizer, AutoModel, AutoModelForCausalLM
 
-#from sentence_transformers import SentenceTransformer
-#import tiktoken
 from tree_sitter import Node
 from tree_sitter_language_pack import get_language, get_parser
 
 import chromadb
 
-#EMBEDDING_MODEL='Alibaba-NLP/gte-Qwen2-1.5B-instruct'
-EMBEDDING_MODEL='/home/mdharmap/models/gte-Qwen2-1.5B-instruct-half'
+DEFAULT_EMBEDDING_MODEL='Alibaba-NLP/gte-Qwen2-1.5B-instruct'
+DEFAULT_SUMMARIZER_MODEL='Qwen/Qwen2.5-Coder-7B-Instruct-AWQ'
 
 repos_info_file = None
 repos_info = {}
@@ -128,7 +127,7 @@ class TokenEmbedder:
     initialized_tokenizers = {}
     initialized_models = {}
 
-    def __init__(self, embedding_model: str, device:str = 'cuda'):
+    def __init__(self, embedding_model: str = DEFAULT_EMBEDDING_MODEL, device:str = 'cuda'):
         self.embedding_model = embedding_model
         self._device = device
 
@@ -323,13 +322,10 @@ class CodeSplitter:
         else:
             raise ValueError(f"Could not parse code with language {self.language}.")
 
-import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM
-
-class CodeSummarizer:
-    def __init__(self, model_name="Qwen/Qwen2.5-Coder-32B-Instruct", device=None):
+class LocalCodeSummarizer:
+    def __init__(self, model_name=DEFAULT_SUMMARIZER_MODEL, device=None):
         """
-        Initialize the CodeSummarizer with the Qwen2.5-Coder model.
+        Initialize the LocalCodeSummarizer with the Qwen2.5-Coder model.
         
         Args:
             model_name (str): HuggingFace model identifier
@@ -352,7 +348,7 @@ class CodeSummarizer:
             device_map=self.device,
             trust_remote_code=True
         )
-        print("CodeSummarizer: Model loaded successfully!")
+        print("LocalCodeSummarizer: Model loaded successfully!")
         
     def summarize(self, code_snippet, max_new_tokens=256, temperature=0.2):
         """
@@ -414,6 +410,102 @@ Please summarize this code in a few sentences:
             str: The generated summary
         """
         return self.summarize(code_snippet, max_new_tokens, temperature)
+
+class OpenAICodeSummarizer:
+    def __init__(self, api_endpoint, api_key=None, model_name="Qwen/Qwen2.5-Coder-32B-Instruct"):
+        """
+        Initialize the OpenAICodeSummarizer to use an OpenAI-compatible API endpoint.
+        
+        Args:
+            api_endpoint (str): The URL of the API endpoint (e.g. 'https://api.example.com/v1/chat/completions')
+            api_key (str, optional): API key for authentication
+            model_name (str): Model name to use in API requests
+        """
+        self.api_endpoint = api_endpoint
+        self.api_key = api_key
+        self.model_name = model_name
+        
+        # Prepare headers for API requests
+        self.headers = {
+            "Content-Type": "application/json"
+        }
+        
+        # Add API key to headers if provided
+        if self.api_key:
+            self.headers["Authorization"] = f"Bearer {self.api_key}"
+            
+        print(f"OpenAICodeSummarizer initialized to use {model_name} via API endpoint")
+    
+    def summarize(self, code_snippet, max_tokens=256, temperature=0.2):
+        """
+        Summarize the given code snippet by calling the API.
+        
+        Args:
+            code_snippet (str): The code to summarize
+            max_tokens (int): Maximum number of tokens to generate
+            temperature (float): Temperature for sampling (lower = more deterministic)
+            
+        Returns:
+            str: The generated summary of the code
+        """
+        prompt = f"You are an excellent AI assistant that summarizes code concisely. Summarize the following code in a few sentences:\n\n```\n{code_snippet}\n```"
+        # Prepare the request payload
+        payload = {
+            "model": self.model_name,
+            "prompt": prompt,
+            "max_tokens": max_tokens,
+            "temperature": temperature
+        }
+        
+        try:
+            # Make the API request
+            response = requests.post(
+                self.api_endpoint,
+                headers=self.headers,
+                data=json.dumps(payload),
+                timeout=30  # 30 second timeout
+            )
+            
+            # Check if the request was successful
+            response.raise_for_status()
+            
+            # Parse the response
+            response_data = response.json()
+            
+            # Extract the generated text from the response
+            # Format follows OpenAI's API response structure
+            if "choices" in response_data and len(response_data["choices"]) > 0:
+                if "message" in response_data["choices"][0]:
+                    # Standard OpenAI format
+                    return response_data["choices"][0]["message"]["content"].strip()
+                elif "text" in response_data["choices"][0]:
+                    # Alternative format sometimes used
+                    return response_data["choices"][0]["text"].strip()
+            
+            # If we couldn't find the expected structure, return the raw response
+            return f"Error: Unexpected response format: {response_data}"
+            
+        except requests.exceptions.RequestException as e:
+            # Handle request errors
+            return f"Error: API request failed: {str(e)}"
+        except json.JSONDecodeError:
+            # Handle JSON parsing errors
+            return f"Error: Failed to parse API response as JSON"
+        except Exception as e:
+            # Handle any other errors
+            return f"Error: {str(e)}"
+    
+    def __call__(self, code_snippet, max_tokens=256, temperature=0.2):
+        """
+        Allow the class to be called directly as a function.
+        
+        Args:
+            Same as summarize() method
+            
+        Returns:
+            str: The generated summary
+        """
+        return self.summarize(code_snippet, max_tokens, temperature)
 
 def process_file(git_repo_name:str, filename:str, code_splitter, token_embedder, code_summarizer, chroma_collection):
     global mtimes_file, files_info
@@ -653,7 +745,7 @@ def guess_language_from_filename(filename):
             return 'yaml'
         return None
 
-def scan_source_tree(git_repo_name, root_dir, code_splitters, token_embedder, code_summarizer, chroma_collection):
+def scan_source_tree(git_repo_name, root_dir, code_splitters, embedding_model_name, token_embedder, code_summarizer, chroma_collection):
     print(f"scan_source_tree: Entered. root_dir={root_dir}")
     stats = {
         'total_files': 0,
@@ -676,7 +768,7 @@ def scan_source_tree(git_repo_name, root_dir, code_splitters, token_embedder, co
                 continue
             if not language in code_splitters:
                 try:
-                    code_splitters[language] = CodeSplitter(language, 512, 32768, True, 1, EMBEDDING_MODEL)
+                    code_splitters[language] = CodeSplitter(language, 512, 32768, True, 1, embedding_model_name)
                 except Exception as ex:
                     print(f"Caught {ex} while trying to create code splitter for {language}")
                     continue
@@ -706,8 +798,8 @@ def exit_handler():
         ofile.write(f"{json.dumps(repos_info)}")
 
 def main():
-    if len(sys.argv) != 10:
-        print(f"Usage: python codesplit.py <repos_info.json> <files_info.json> <chromadb_host> <chromadb_port> <chromadb_collection> <git_repo_name> <dir_with_local_copy_of_git_repo> cpu|cuda cpu|cuda")
+    if len(sys.argv) != 11:
+        print(f"Usage: python codesplit.py <repos_info.json> <files_info.json> <chromadb_host> <chromadb_port> <chromadb_collection> <git_repo_name> <dir_with_local_copy_of_git_repo> summarizer_model|summarizer_url embedding_model device")
         os._exit(255)
 
     global mtimes_file, files_info
@@ -735,10 +827,13 @@ def main():
     chroma_collection = chroma_client.get_or_create_collection(name=sys.argv[5])
 
     code_splitters = {}
-    token_embedder: TokenEmbedder = TokenEmbedder(EMBEDDING_MODEL, device=sys.argv[8])
-    code_summarizer: CodeSummarizer = CodeSummarizer(model_name="/home/mdharmap/models/Qwen2.5-Coder-7B-Instruct-AWQ", device=sys.argv[9])
+    token_embedder: TokenEmbedder = TokenEmbedder(sys.argv[9], device=sys.argv[10])
+    if sys.argv[8].startswith('http'):
+        code_summarizer: OpenAICodeSummarizer = OpenAICodeSummarizer(sys.argv[8], model_name="Qwen2.5-Coder-32B-Instruct")
+    else:
+        code_summarizer: LocalCodeSummarizer = LocalCodeSummarizer(model_name=sys.argv[8], device=sys.argv[9])
 
-    scan_source_tree(sys.argv[6], sys.argv[7], code_splitters, token_embedder, code_summarizer, chroma_collection)
+    scan_source_tree(sys.argv[6], sys.argv[7], code_splitters, sys.argv[9], token_embedder, code_summarizer, chroma_collection)
 
 if __name__ == "__main__":
     main()

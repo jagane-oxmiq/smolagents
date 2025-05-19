@@ -537,12 +537,18 @@ def process_file(git_repo_name:str, filename:str, code_splitter, token_embedder,
     ids = []
     for split_number in range(len(split_text)):
         one_split = split_text[split_number]
-        summary = code_summarizer(one_split)
+        if code_summarizer:
+            summary = code_summarizer(one_split)
+        else:
+            summary = one_split
         with torch.no_grad():
             embedding = token_embedder.embed(summary)
         splits.append(one_split)
         embeddings.append(embedding[0].detach().to('cpu').numpy())
-        metadatas.append({"git": git_repo_name, "fn": filename, "split": str(split_number), "summary": summary})
+        if code_summarizer:
+            metadatas.append({"git": git_repo_name, "fn": filename, "split": str(split_number), "summary": summary})
+        else:
+            metadatas.append({"git": git_repo_name, "fn": filename, "split": str(split_number)})
         ids.append(f"{split_number}@{filename}")
     chroma_collection.add(documents=splits, embeddings=embeddings, metadatas=metadatas, ids=ids)
     files_info[filename] = res
@@ -828,7 +834,9 @@ def main():
 
     code_splitters = {}
     token_embedder: TokenEmbedder = TokenEmbedder(sys.argv[9], device=sys.argv[10])
-    if sys.argv[8].startswith('http'):
+    if sys.argv[8].startswith('dontsummarize'):
+        code_summarizer = None
+    elif sys.argv[8].startswith('http'):
         code_summarizer: OpenAICodeSummarizer = OpenAICodeSummarizer(sys.argv[8], model_name="Qwen2.5-Coder-32B-Instruct")
     else:
         code_summarizer: LocalCodeSummarizer = LocalCodeSummarizer(model_name=sys.argv[8], device=sys.argv[9])

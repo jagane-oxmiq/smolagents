@@ -1521,77 +1521,130 @@ function createQuestionCard(item) {
     `;
 }
 
+function isDictionary(obj) {
+  // First, ensure it's an object and not null
+  if (obj === null || typeof obj !== 'object') {
+    return false;
+  }
+  
+  // Check if it's a plain object (not an array, Date, RegExp, etc.)
+  // This uses the Object.prototype.toString method which returns a more precise type
+  const type = Object.prototype.toString.call(obj);
+  if (type !== '[object Object]') {
+    return false;
+  }
+  
+  // Optional: Check if the object's prototype is exactly Object.prototype
+  // This excludes objects created with custom constructors
+  const proto = Object.getPrototypeOf(obj);
+  return proto === Object.prototype;
+}
+
+function prettyPrintJsonAsHtml(obj) {
+  // Stringify the object with 2-space indentation
+  const jsonString = JSON.stringify(obj, null, 2);
+  
+  // Escape HTML special characters to prevent XSS
+  const htmlEscaped = jsonString
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+  
+  // Add syntax highlighting by replacing patterns with HTML spans
+  const highlighted = htmlEscaped
+    // Highlight keys (anything before quotes and colon)
+    .replace(/"([^"]+)":/g, '<span style="color: #a31515">"$1"</span>:')
+    // Highlight string values
+    .replace(/: "([^"]+)"/g, ': <span style="color: #0451a5">"$1"</span>')
+    // Highlight numbers
+    .replace(/: ([0-9]+)/g, ': <span style="color: #098658">$1</span>')
+    // Highlight booleans
+    .replace(/: (true|false)/g, ': <span style="color: #0000ff">$1</span>')
+    // Highlight null
+    .replace(/: (null)/g, ': <span style="color: #0000ff">$1</span>');
+  
+  // Wrap in a pre tag with styling for better display
+  return `<pre style="background-color: #f8f8f8; padding: 10px; border-radius: 5px; font-family: monospace;">${highlighted}</pre>`;
+}
+
 // Format answer text to improve readability
 function formatAnswer(text) {
     if (!text) return '<p>No answer provided.</p>';
+    if (typeof text == "string") {
+        // Process text to identify parts and structure
+        let formattedText = text;
     
-    // Process text to identify parts and structure
-    let formattedText = text;
-    
-    // Detect if the text contains a header pattern like "Oxmiq DeepInsights analysis:"
-    if (formattedText.includes('Oxmiq DeepInsights analysis:')) {
-        // Extract the question part
-        const parts = formattedText.split('Oxmiq DeepInsights analysis:');
-        if (parts.length > 1) {
-            // Remove the question part and any extra whitespace
-            formattedText = parts[1].trim();
+        // Detect if the text contains a header pattern like "Oxmiq DeepInsights analysis:"
+        if (formattedText.includes('Oxmiq DeepInsights analysis:')) {
+            // Extract the question part
+            const parts = formattedText.split('Oxmiq DeepInsights analysis:');
+            if (parts.length > 1) {
+                // Remove the question part and any extra whitespace
+                formattedText = parts[1].trim();
+            }
         }
+    
+        // Split into paragraphs and format each
+        let paragraphs = formattedText.split(/\\n{2,}/g); // Split on double newlines or more
+    
+        // Process each paragraph
+        paragraphs = paragraphs.map(paragraph => {
+            // Trim whitespace
+            paragraph = paragraph.trim();
+        
+            // Skip empty paragraphs
+            if (!paragraph) return '';
+        
+            // If paragraph starts with a bullet point marker, format as a list item
+            if (paragraph.startsWith('- ') || paragraph.startsWith('• ')) {
+                return `<li>${paragraph.substring(2)}</li>`;
+            }
+        
+            // Check if this is a "Key finding" or similar highlighted section
+            if (paragraph.toLowerCase().includes('key finding') || 
+                paragraph.toLowerCase().includes('important:') ||
+                paragraph.toLowerCase().includes('note:')) {
+                return `<div class="key-finding">${paragraph}</div>`;
+            }
+        
+            // Check if this is a section header (shorter text ending with a colon)
+            if (paragraph.length < 50 && paragraph.endsWith(':')) {
+                return `<div class="insight-title">${paragraph}</div>`;
+            }
+        
+            // Regular paragraph
+            return `<p>${paragraph}</p>`;
+        });
+    
+        // Join all processed paragraphs
+        let result = paragraphs.join('');
+    
+        // Wrap in a list if multiple list items were detected
+        if (result.includes('<li>')) {
+            const listItems = result.split('<li>').filter(item => item.includes('</li>'));
+            if (listItems.length > 1) {
+                // Extract the list items
+                const listContent = result.match(/<li>.*?<\\/li>/g).join('');
+                // Remove the list items from the original content
+                result = result.replace(/<li>.*?<\\/li>/g, '');
+                // Add the list items in a proper list
+                result = result + `<ul>${listContent}</ul>`;
+            }
+        }
+    
+        // If result is empty (after all processing), return a default message
+        if (!result.trim()) {
+            return '<p>Analysis complete. See logs for details.</p>';
+        }
+    
+        return result;
+    } else if (isDictionary(text)) {
+        return '<p>' + prettyPrintJsonAsHtml(text) + '</p>';
+    } else {
+        return '<p>' + text.toString() + '</p>';
     }
-    
-    // Split into paragraphs and format each
-    let paragraphs = formattedText.split(/\\n{2,}/g); // Split on double newlines or more
-    
-    // Process each paragraph
-    paragraphs = paragraphs.map(paragraph => {
-        // Trim whitespace
-        paragraph = paragraph.trim();
-        
-        // Skip empty paragraphs
-        if (!paragraph) return '';
-        
-        // If paragraph starts with a bullet point marker, format as a list item
-        if (paragraph.startsWith('- ') || paragraph.startsWith('• ')) {
-            return `<li>${paragraph.substring(2)}</li>`;
-        }
-        
-        // Check if this is a "Key finding" or similar highlighted section
-        if (paragraph.toLowerCase().includes('key finding') || 
-            paragraph.toLowerCase().includes('important:') ||
-            paragraph.toLowerCase().includes('note:')) {
-            return `<div class="key-finding">${paragraph}</div>`;
-        }
-        
-        // Check if this is a section header (shorter text ending with a colon)
-        if (paragraph.length < 50 && paragraph.endsWith(':')) {
-            return `<div class="insight-title">${paragraph}</div>`;
-        }
-        
-        // Regular paragraph
-        return `<p>${paragraph}</p>`;
-    });
-    
-    // Join all processed paragraphs
-    let result = paragraphs.join('');
-    
-    // Wrap in a list if multiple list items were detected
-    if (result.includes('<li>')) {
-        const listItems = result.split('<li>').filter(item => item.includes('</li>'));
-        if (listItems.length > 1) {
-            // Extract the list items
-            const listContent = result.match(/<li>.*?<\\/li>/g).join('');
-            // Remove the list items from the original content
-            result = result.replace(/<li>.*?<\\/li>/g, '');
-            // Add the list items in a proper list
-            result = result + `<ul>${listContent}</ul>`;
-        }
-    }
-    
-    // If result is empty (after all processing), return a default message
-    if (!result.trim()) {
-        return '<p>Analysis complete. See logs for details.</p>';
-    }
-    
-    return result;
 }
 
 function showMessage(container, message, type = 'info') {

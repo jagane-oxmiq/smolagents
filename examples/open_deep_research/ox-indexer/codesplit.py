@@ -703,6 +703,7 @@ def guess_language_from_filename(filename):
         ".tablegen": "tablegen",
         ".tcl": "tcl",
         ".terraform": "terraform",
+        ".tf": "terraform",
         ".test": "test",
         ".thrift": "thrift",
         ".toml": "toml",

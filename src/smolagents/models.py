@@ -49,44 +49,42 @@ DEFAULT_CODEAGENT_REGEX_GRAMMAR = {
 
 
 def walk_completion_kwargs(idstr, file, completion_kwargs):
-    """
-    Recursively walk through all items in the completion_kwargs dictionary
-    and print the structure with proper indentation.
-    """
-    def _walk(obj, depth=0):
-        indent = "  " * depth
-
-        if isinstance(obj, dict):
-            for key, value in obj.items():
-                print(f"{indent}{key}: ", end="", file=file)
-                if isinstance(value, (dict, list)):
-                    print("", file=file)
-                    _walk(value, depth + 1)
-                elif isinstance(value, str):
-                    print(value.replace("\\n", '\'), file=file)
-                else:
-                    print(repr(value), file=file)
-                """
-                else:
-                    if key == 'text':
-                        v1 = value.replace("\\n", '\')
-                        print(v1, file=file)
-                    else:
-                        print(repr(value), file=file)
-                """
-        elif isinstance(obj, list):
-            for i, item in enumerate(obj):
-                print(f"{indent}[{i}]: ", end="", file=file)
-                if isinstance(item, (dict, list)):
-                    print("", file=file)
-                    _walk(item, depth + 1)
-                else:
-                    print(repr(item), file=file)
-        else:
-            print(repr(obj), file=file)
-
+    print("", file=file)
     print(f"# Begin {idstr}", file=file)
-    _walk(completion_kwargs)
+    if (idstr.startswith('Response')):
+        if isinstance(completion_kwargs, dict):
+            if 'role' in completion_kwargs:
+                print("", file=file)
+                print(f"##&nbsp;&nbsp;{completion_kwargs['role']}:", file=file)
+            if 'content' in completion_kwargs:
+                print("", file=file)
+                print(f"{completion_kwargs['content'].replace('```<end_code>', '```')}", file=file)
+            if 'tool_calls' in completion_kwargs and completion_kwargs['tool_calls']:
+                for tool in completion_kwargs['tool_calls']:
+                    print("", file=file)
+                    print(f"{tool}", file=file)
+    else:
+        if isinstance(completion_kwargs, dict):
+            for key, messages in completion_kwargs.items():
+                if (isinstance(key, str) and key == 'messages'):
+                    print("", file=file)
+                    for ind in range(len(messages)):
+                        message = messages[ind]
+                        if ('role' in message):
+                            print("", file=file)
+                            print(f"##&nbsp;&nbsp;{message['role']}:", file=file)
+                        if ('content' in message):
+                            contents = message['content']
+                            for content in contents:
+                                if ('type' in content and content['type'] == 'text'):
+                                    text = content['text']
+                                    print("", file=file)
+                                    print(f"{text.replace('```<end_code>', '```')}", file=file)
+                                else:
+                                    print("", file=file)
+                                    print(f"[//]: # ({content})", file=file)
+                                    print("", file=file)
+    print("", file=file)
     print(f"# End {idstr}", file=file)
 
 def get_dict_from_nested_dataclasses(obj, ignore_key=None):

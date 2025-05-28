@@ -191,9 +191,9 @@ system_prompt: |-
       1. You have FIRST attempted to answer using only our_git_agent
       2. The internal search yielded insufficient information to provide a complete answer
       3. The query contains a request for information that would clearly not exist in internal repositories (e.g., general world knowledge, current events, etc.)
-  14. Ensure that your code sequence starts with ```py and ends with ```
+  14. Ensure that your code sequence starts with 'Code:\n```py' and ends with '```<end_code>'
   15. It is VERY IMPORTANT that you call our_git_agent at least one time before calling any other agents or tools.
-  16. It is VERY IMPORTANT that your code sequence starts with a line that contains only ```py and ends with a line that contains only ```
+  16. It is VERY IMPORTANT that your code sequence starts with 'Code:\n```py' and ends with a line that contains only '```<end_code>'
   {%- endif %}
 
   Now Begin! If you solve the task correctly, you will receive a reward of $1,000,000.

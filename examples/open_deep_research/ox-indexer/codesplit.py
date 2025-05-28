@@ -525,6 +525,7 @@ def process_file(git_repo_name:str, filename:str, code_splitter, token_embedder,
     mtime = os.path.getmtime(filename)
     if filename in files_info:
         if mtime <= files_info[filename]['mtime']:
+            print(f"process_file: Skipping filename={filename} because it is unmodified. mtime={mtime} <= files_info time={files_info[filename]['mtime']}")
             return
     with open(filename, 'r', encoding='utf-8') as file:
         content = file.read()

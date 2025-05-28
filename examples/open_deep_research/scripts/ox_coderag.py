@@ -52,7 +52,7 @@ class OxCodeRag:
         self._embedding_model_tokenizer = AutoTokenizer.from_pretrained(EMBEDDING_MODEL, trust_remote_code=True)
         self._embedding_model = AutoModel.from_pretrained(EMBEDDING_MODEL, trust_remote_code=True).to(device_name)
         self._device_name = device_name
-        self._cross_encoder_model = CrossEncoder(CROSS_ENCODING_MODEL)
+        self._cross_encoder_model = CrossEncoder(CROSS_ENCODING_MODEL, device=device_name)
         with open(os.path.join(self._local_dir, 'repos_info.json'), 'r') as rfp:
             self._repositories = json.loads(rfp.read())
         self._repository_list = list(map(str, self._repositories.keys()))

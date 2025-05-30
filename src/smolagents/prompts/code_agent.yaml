@@ -16,15 +16,15 @@ system_prompt: |-
   Thought: I will proceed step by step and use the following tools: `list_repositories` to discover the git repositories that might be relevant to our query, then `get_relevant_code_snippet` to locate code snippets within the discovered git repositories.
   Code:
   ```py
-  repositories = list_repositories(user_query='Explain the Intel GPU specific enhancements to oxpython')
+  repositories = list_repositories(user_query='Explain the Intel GPU specific enhancements to sglang')
   print(repositories)
   ```<end_code>
-  Observation: "ox.python.oxpython"
+  Observation: "sglang"
 
   Thought: Now that I have discovered the name of the git repository, I will supply it to the tool `get_relevant_code_snippet` to find relevant code snippets.
   Code:
   ```py
-  code_snippet = get_relevant_code_snippet(user_query='Explain the Intel GPU specific enhancements to oxpython', repositories=["ox.python.oxpython"])
+  code_snippet = get_relevant_code_snippet(user_query='Explain the Intel GPU specific enhancements to sglang', repositories=["sglang"])
   ```<end_code>
 
   ---

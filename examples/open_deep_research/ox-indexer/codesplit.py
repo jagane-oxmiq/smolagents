@@ -23,6 +23,7 @@ import traceback
 from dataclasses import dataclass
 from typing import List, Optional, Union
 import requests
+import numpy as np
 
 import torch
 import torch.nn.functional as F
@@ -110,7 +111,7 @@ class TokenCounter:
     def count(self, text: str):
         if self.model not in self.initialized_models:
             try:
-                self.initialized_models[self.model] = AutoTokenizer.from_pretrained(self.model, trust_remote_code=True)
+                self.initialized_models[self.model] = AutoTokenizer.from_pretrained(self.model, repo_type='model', trust_remote_code=True)
             except KeyError:
                 raise
         batch_dict = self.initialized_models[self.model]([text],
@@ -122,34 +123,106 @@ class TokenCounter:
     def count_chunk(self, chunk: Span, source_code: bytes):
         return self.count(chunk.extract(source_code).decode("utf-8"))
 
+class RestEmbeddingClient:
+    def __init__(self, base_url: str = "http://localhost:8001", api_key: Optional[str] = None):
+        """
+        Initialize the client
+        
+        Args:
+            base_url: Base URL of the REST API server
+            api_key: Optional API key (not required for local deployment)
+        """
+        self.base_url = base_url.rstrip('/')
+        self.api_key = api_key
+        self.headers = {
+            "Content-Type": "application/json"
+        }
+        if api_key:
+            self.headers["Authorization"] = f"Bearer {api_key}"
+    
+    def create_embeddings(
+        self, 
+        input_text: Union[str, List[str]], 
+        model: str = "nomic-embed-code",
+        encoding_format: str = "float"
+    ) -> dict:
+        """
+        Create embeddings for the given input
+        
+        Args:
+            input_text: Single string or list of strings to embed
+            model: Model name (default: nomic-embed-code)
+            encoding_format: Format of the embeddings (default: float)
+            
+        Returns:
+            Dictionary containing the embeddings and metadata
+        """
+        endpoint = f"{self.base_url}/v1/embeddings"
+        
+        payload = {
+            "input": input_text,
+            "model": model,
+            "encoding_format": encoding_format
+        }
+        
+        response = requests.post(endpoint, json=payload, headers=self.headers)
+        response.raise_for_status()
+        
+        return response.json()
+    
+    def get_embeddings(self, input_text: Union[str, List[str]]) -> np.ndarray:
+        """
+        Get embeddings as numpy array
+        
+        Args:
+            input_text: Single string or list of strings to embed
+            
+        Returns:
+            Numpy array of embeddings
+        """
+        result = self.create_embeddings(input_text)
+        embeddings = [item["embedding"] for item in result["data"]]
+        return np.array(embeddings)
+    
+    def cosine_similarity(self, vec1: np.ndarray, vec2: np.ndarray) -> float:
+        """Calculate cosine similarity between two vectors"""
+        return np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
+
 class TokenEmbedder:
     embedding_model: str
     initialized_tokenizers = {}
     initialized_models = {}
+    rest_embedding_client = None
 
     def __init__(self, embedding_model: str = DEFAULT_EMBEDDING_MODEL, device:str = 'cuda'):
         self.embedding_model = embedding_model
         self._device = device
 
     def embed(self, text: str):
-        if self.embedding_model not in self.initialized_models:
-            try:
-                self.initialized_tokenizers[self.embedding_model] = AutoTokenizer.from_pretrained(self.embedding_model,
+        if self.embedding_model.startswith('http'):
+            if not self.rest_embedding_client:
+                self.rest_embedding_client = RestEmbeddingClient(base_url=self.embedding_model)
+            rvjson = self.rest_embedding_client.create_embeddings(text)
+            return rvjson['data'][0]['embedding']
+        else:
+            if self.embedding_model not in self.initialized_models:
+                try:
+                    self.initialized_tokenizers[self.embedding_model] = AutoTokenizer.from_pretrained(self.embedding_model, repo_type='model',
                                                                                     trust_remote_code=True)
-                self.initialized_models[self.embedding_model] = AutoModel.from_pretrained(self.embedding_model,
+                    self.initialized_models[self.embedding_model] = AutoModel.from_pretrained(self.embedding_model,
                                                                                     trust_remote_code=True).to(self._device)
-            except KeyError:
-                raise
-        batch_dict = self.initialized_tokenizers[self.embedding_model]([text],
+                except KeyError:
+                    raise
+            batch_dict = self.initialized_tokenizers[self.embedding_model]([text],
                                                     padding=True,
                                                     truncation=True,
                                                     return_tensors='pt').to(self._device)
-        outputs = self.initialized_models[self.embedding_model](**batch_dict)
-        embeddings = last_token_pool(outputs.last_hidden_state, batch_dict['attention_mask'])
+            outputs = self.initialized_models[self.embedding_model](**batch_dict)
+            embeddings = last_token_pool(outputs.last_hidden_state, batch_dict['attention_mask'])
 
-        # normalize embeddings
-        embeddings = F.normalize(embeddings, p=2, dim=1)
-        return embeddings[:2]
+            # normalize embeddings
+            embeddings = F.normalize(embeddings, p=2, dim=1)
+            return embeddings[:2]
 
 class CodeSplitter:
     """Split code using a AST parser."""
@@ -545,14 +618,20 @@ def process_file(git_repo_name:str, filename:str, code_splitter, token_embedder,
         with torch.no_grad():
             embedding = token_embedder.embed(summary)
         splits.append(one_split)
-        embeddings.append(embedding[0].detach().to('cpu').numpy())
+        if (isinstance(embedding[0], Tensor)):
+            embeddings.append(embedding[0].detach().to('cpu').numpy())
+        else:
+            embeddings.append(np.array(embedding))
         if code_summarizer:
             metadatas.append({"git": git_repo_name, "fn": filename, "split": str(split_number), "summary": summary})
         else:
             metadatas.append({"git": git_repo_name, "fn": filename, "split": str(split_number)})
         ids.append(f"{split_number}@{filename}")
-    chroma_collection.add(documents=splits, embeddings=embeddings, metadatas=metadatas, ids=ids)
-    files_info[filename] = res
+    try:
+        chroma_collection.add(documents=splits, embeddings=embeddings, metadatas=metadatas, ids=ids)
+        files_info[filename] = res
+    except Exception as e:
+        print(f"process_file: fn={filename}, num splits={len(splits)}. Caught {e}")
 
 def guess_language_from_filename(filename):
     """
@@ -806,8 +885,8 @@ def exit_handler():
         ofile.write(f"{json.dumps(repos_info)}")
 
 def main():
-    if len(sys.argv) != 11:
-        print(f"Usage: python codesplit.py <repos_info.json> <files_info.json> <chromadb_host> <chromadb_port> <chromadb_collection> <git_repo_name> <dir_with_local_copy_of_git_repo> summarizer_model|summarizer_url embedding_model device")
+    if len(sys.argv) != 12:
+        print(f"Usage: python codesplit.py <repos_info.json> <files_info.json> <chromadb_host> <chromadb_port> <chromadb_collection> <git_repo_name> <dir_with_local_copy_of_git_repo> summarizer_model|summarizer_url embedding_model embedding_model_url device")
         os._exit(255)
 
     global mtimes_file, files_info
@@ -835,13 +914,16 @@ def main():
     chroma_collection = chroma_client.get_or_create_collection(name=sys.argv[5])
 
     code_splitters = {}
-    token_embedder: TokenEmbedder = TokenEmbedder(sys.argv[9], device=sys.argv[10])
+    if sys.argv[10] == 'uselocal':
+        token_embedder: TokenEmbedder = TokenEmbedder(sys.argv[9], device=sys.argv[11])
+    else:
+        token_embedder: TokenEmbedder = TokenEmbedder(sys.argv[10], device=sys.argv[11])
     if sys.argv[8].startswith('dontsummarize'):
         code_summarizer = None
     elif sys.argv[8].startswith('http'):
         code_summarizer: OpenAICodeSummarizer = OpenAICodeSummarizer(sys.argv[8], model_name="Qwen2.5-Coder-32B-Instruct")
     else:
-        code_summarizer: LocalCodeSummarizer = LocalCodeSummarizer(model_name=sys.argv[8], device=sys.argv[9])
+        code_summarizer: LocalCodeSummarizer = LocalCodeSummarizer(model_name=sys.argv[8], device=sys.argv[11])
 
     scan_source_tree(sys.argv[6], sys.argv[7], code_splitters, sys.argv[9], token_embedder, code_summarizer, chroma_collection)
 

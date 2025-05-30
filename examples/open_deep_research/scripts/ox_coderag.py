@@ -28,7 +28,7 @@ from smolagents import Tool
 from .cookies import COOKIES
 from .mdconvert import FileConversionException, MarkdownConverter, UnsupportedFormatException
 
-EMBEDDING_MODEL='Alibaba-NLP/gte-Qwen2-1.5B-instruct'
+EMBEDDING_MODEL='nomic-ai/nomic-embed-code'
 CROSS_ENCODING_MODEL="cross-encoder/ms-marco-MiniLM-L-6-v2"
 
 def last_token_pool(last_hidden_states: Tensor,
